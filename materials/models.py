@@ -66,3 +66,20 @@ class Lesson(models.Model):
         verbose_name="Владелец урока",
         help_text="Выберите владельца урока",
     )
+
+    class Meta:
+        verbose_name = "Урок"
+        verbose_name_plural = "Уроки"
+        ordering = ["id"]
+
+
+class CourseSubscription(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        verbose_name="Пользователь",
+        help_text="Выберите пользователя",
+    )
+    course = models.ForeignKey(
+        Course, on_delete=models.CASCADE, verbose_name="Курс", help_text="Выберите курс"
+    )
