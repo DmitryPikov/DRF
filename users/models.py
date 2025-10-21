@@ -71,3 +71,38 @@ class Payment(models.Model):
         verbose_name = "Платеж"
         verbose_name_plural = "Платежи"
         ordering = ["-payment_date"]
+
+
+class PaymentCourse(models.Model):
+    amount = models.PositiveIntegerField(
+        verbose_name="Сумма курса", help_text="Укажите сумму курса",
+    )
+    session_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name="ID сессии",
+        help_text="Укажите ID сессии",
+    )
+    link = models.URLField(
+        max_length=1000,
+        blank=True,
+        null=True,
+        verbose_name="Ссылка на оплату",
+        help_text="Укажите ссылку на оплату",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        verbose_name="Пользователь",
+        help_text="Укажите пользователя",
+    )
+
+    class Meta:
+        verbose_name = "Оплата курса"
+        verbose_name_plural = "Оплаты курсов"
+
+    def __str__(self):
+        return self.amount

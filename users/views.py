@@ -3,8 +3,9 @@ from rest_framework.generics import (CreateAPIView, DestroyAPIView,
                                      UpdateAPIView)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
-from users.models import User
-from users.serializers import UserDetailSerializer, UserSerializer
+from users.models import User, PaymentCourse
+from users.serializers import UserDetailSerializer, UserSerializer, PaymentCourseSerializer
+from users.services import create_stripe_session, create_stripe_price
 
 
 class UserCreateAPIView(CreateAPIView):
@@ -45,3 +46,17 @@ class UserUpdateAPIView(UpdateAPIView):
 class UserDestroyAPIView(DestroyAPIView):
     queryset = User.objects.all()
     permission_classes = (IsAuthenticated,)
+
+
+class PaymentCourseCreateAPIView(CreateAPIView):
+    serializer_class = PaymentCourseSerializer
+    queryset = PaymentCourse.objects.all()
+
+    def perform_create(self, serializer):
+        payment = serializer.save(user=self.request.user)
+        amount_in_dollars = payment.amount
+        price = create_stripe_price(amount_in_dollars)
+        session_id, payment_link = create_stripe_session(price)
+        payment.session_id = session_id
+        payment.link = payment_link
+        payment.save()
