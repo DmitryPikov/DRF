@@ -28,6 +28,13 @@ class User(AbstractUser):
         verbose_name="Аватар",
         help_text="Загрузите аватар",
     )
+    last_login = models.DateTimeField(
+        null=True,
+        blank=True,
+        auto_now=True,
+        verbose_name='Последний вход',
+        help_text='Последний вход',
+    )
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []

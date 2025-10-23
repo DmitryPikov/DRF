@@ -1,5 +1,5 @@
 import stripe
-from django.contrib.messages import success
+from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from config.settings import STRIPE_API_KEY
 
@@ -25,3 +25,24 @@ def create_stripe_session(price):
     )
 
     return session.get("id"), session.get("url")
+
+
+def create_periodic_task():
+    schedule, _ = CrontabSchedule.objects.get_or_create(
+        minute='0',
+        hour='3',
+        day_of_week='*',
+        day_of_month='*',
+        month_of_year='*',
+        timezone='Europe/Moscow'
+    )
+
+    PeriodicTask.objects.get_or_create(
+        crontab=schedule,
+        name='Check inactive users',
+        task='users.tasks.check_inactive_users',
+        defaults={
+            'description': 'Блокировка пользователей, не заходивших более месяца',
+            'enabled': True
+        }
+    )

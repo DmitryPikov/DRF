@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 from users.models import User
 
@@ -27,10 +28,22 @@ class Course(models.Model):
         verbose_name="Владелец курса",
         help_text="Выберите владельца курса",
     )
+    last_notification_sent = models.DateTimeField(
+        verbose_name='Время последнего уведомления',
+        null=True,
+        blank=True
+    )
 
     class Meta:
         verbose_name = "Курс"
         verbose_name_plural = "Курсы"
+
+    def should_send_notification(self):
+        if not self.last_notification_sent:
+            return True
+
+        time_since_last_notification = timezone.now() - self.last_notification_sent
+        return time_since_last_notification.total_seconds() > 4 * 60 * 60
 
 
 class Lesson(models.Model):
