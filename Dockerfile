@@ -1,18 +1,22 @@
-FROM python:3.12-slim
+FROM python:3.13-alpine
 
-WORKDIR /app
+WORKDIR /code
 
-RUN apt-get update \
-    && apt-get install -y gcc libpq-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Установка системных зависимостей
+RUN apk add --no-cache gcc musl-dev libffi-dev libpq
 
+# Настройка pip для использования зеркала
+RUN pip install --upgrade pip
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
+# Копируем requirements
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Устанавливаем зависимости
+RUN pip install -r requirements.txt
 
+# Копируем код приложения
 COPY . .
 
-EXPOSE 8000
-
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Команда для запуска
+CMD ["python3", "manage.py", "runserver", "0.0.0.0:8000"]
