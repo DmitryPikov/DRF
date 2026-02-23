@@ -6,8 +6,37 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     env:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      DEBUG: "False"
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      # Добавьте остальные переменные с значениями по умолчанию для тестов
+      STRIPE_API_KEY: "test_stripe_key"
+      EMAIL_HOST: "localhost"
+      EMAIL_PORT: "25"
+      EMAIL_HOST_USER: "test@example.com"
+      EMAIL_HOST_PASSWORD: "test_password"
+      CELERY_BROKER_URL: "redis://localhost:6379"
+      CELERY_RESULT_BACKEND: "redis://localhost:6379"
 
     steps:
       - name: Check out code
@@ -30,6 +59,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install psycopg2-binary  # для PostgreSQL
 
       - name: Run migrations
         run: python manage.py migrate
@@ -39,9 +69,16 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    needs: test
 
     env:
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      DEBUG: "False"
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+      POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
 
     steps:
       - name: Check out code
@@ -62,6 +99,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    if: github.ref == 'refs/heads/main'  # только для main ветки
 
     steps:
       - name: Check out code
@@ -74,11 +112,11 @@ jobs:
 
       - name: Copy project files to server
         run: |
-          rsync -avz --exclude '__pycache__' --exclude '.env' --exclude '.git' . ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
+          rsync -avz --exclude '__pycache__' --exclude '.env' --exclude '.git' --exclude 'venv' ./ ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
 
       - name: Install dependencies on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
             cd ${{ secrets.DEPLOY_DIR }}
             python3 -m venv venv
             source venv/bin/activate
@@ -87,7 +125,7 @@ jobs:
 
       - name: Create .env file on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
             cd ${{ secrets.DEPLOY_DIR }}
             cat > .env << 'ENVFILE'
             SECRET_KEY=${{ secrets.SECRET_KEY }}
@@ -109,7 +147,7 @@ jobs:
 
       - name: Apply migrations on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
             cd ${{ secrets.DEPLOY_DIR }}
             source venv/bin/activate
             python manage.py migrate
@@ -117,7 +155,7 @@ jobs:
 
       - name: Collect static files on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
             cd ${{ secrets.DEPLOY_DIR }}
             source venv/bin/activate
             python manage.py collectstatic --noinput
@@ -125,6 +163,6 @@ jobs:
 
       - name: Restart application
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
             sudo systemctl restart myapp.service || echo "Service not found, please restart manually"
           EOF
