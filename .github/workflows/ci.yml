@@ -63,10 +63,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
 
-    env: # Добавлено!
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
-
     steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.8.1
         with:
@@ -74,37 +74,57 @@ jobs:
 
       - name: Copy project files to server
         run: |
-          rsync -avz --exclude '__pycache__' . ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
+          rsync -avz --exclude '__pycache__' --exclude '.env' --exclude '.git' . ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }}:${{ secrets.DEPLOY_DIR }}
 
       - name: Install dependencies on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
             cd ${{ secrets.DEPLOY_DIR }}
             python3 -m venv venv
             source venv/bin/activate
             pip install -r requirements.txt
           EOF
 
+      - name: Create .env file on server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
+            cd ${{ secrets.DEPLOY_DIR }}
+            cat > .env << 'ENVFILE'
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
+            DEBUG=False
+            POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}
+            POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}
+            STRIPE_API_KEY=${{ secrets.STRIPE_API_KEY }}
+            EMAIL_HOST=${{ secrets.EMAIL_HOST }}
+            EMAIL_PORT=${{ secrets.EMAIL_PORT }}
+            EMAIL_HOST_USER=${{ secrets.EMAIL_HOST_USER }}
+            EMAIL_HOST_PASSWORD=${{ secrets.EMAIL_HOST_PASSWORD }}
+            CELERY_BROKER_URL=${{ secrets.CELERY_BROKER_URL }}
+            CELERY_RESULT_BACKEND=${{ secrets.CELERY_RESULT_BACKEND }}
+            ENVFILE
+          EOF
+
       - name: Apply migrations on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
             cd ${{ secrets.DEPLOY_DIR }}
             source venv/bin/activate
-            export SECRET_KEY="${{ secrets.SECRET_KEY }}"  # <-- ВАЖНО: передаем секрет в ssh сессию
             python manage.py migrate
           EOF
 
       - name: Collect static files on server
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
             cd ${{ secrets.DEPLOY_DIR }}
             source venv/bin/activate
-            export SECRET_KEY="${{ secrets.SECRET_KEY }}"  # <-- И здесь тоже
             python manage.py collectstatic --noinput
           EOF
 
       - name: Restart application
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-            sudo systemctl restart myapp.service
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SERVER_IP }} << EOF
+            sudo systemctl restart myapp.service || echo "Service not found, please restart manually"
           EOF
