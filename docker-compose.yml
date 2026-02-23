@@ -3,17 +3,35 @@ version: '3.9'
 services:
   web:
     build: .
-    command: python3 manage.py runserver 0.0.0.0:8000
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3
     volumes:
       - .:/code
-      - static_volume:/code/static
-    ports:
-      - "8000:8000"
+      - static_volume:/code/staticfiles
+    working_dir: /code
+    expose:  # Вместо ports
+      - "8000"
     depends_on:
       - db
       - redis
     env_file:
       - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+    volumes:
+      - static_volume:/app/staticfiles
+    depends_on:
+      - web
+    restart: unless-stopped
 
   db:
     image: postgres:17-alpine
@@ -21,6 +39,12 @@ services:
       - postgres_data:/var/lib/postgresql/data/
     env_file:
       - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -28,27 +52,37 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   celery:
     build: .
-    command: celery -A drf worker --loglevel=info
+    command: celery -A config worker --loglevel=info
     volumes:
       - .:/code
+    working_dir: /code
     depends_on:
-      - db
+      - web
       - redis
+      - db
     env_file:
       - .env
     restart: unless-stopped
 
   celery-beat:
     build: .
-    command: celery -A drf beat --loglevel=info
+    command: celery -A config beat --loglevel=info
     volumes:
       - .:/code
+    working_dir: /code
     depends_on:
-      - db
+      - web
       - redis
+      - db
     env_file:
       - .env
     restart: unless-stopped
